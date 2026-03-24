@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ASFIS Dashboard</title>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(to right, #eef2f3, #dfe9f3);
+            margin: 0;
+            padding: 20px;
+        }
+
+        h2 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: auto;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+
+        h3 {
+            margin-bottom: 15px;
+            color: #34495e;
+        }
+
+        input {
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            width: 200px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #3498db;
+        }
+
+        button {
+            padding: 10px 16px;
+            background: #2d89ef;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: #1b5fbf;
+        }
+
+        .actions form,
+        .actions a {
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        .result {
+            background: #f1f7ff;
+            border-left: 5px solid #2d89ef;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background: #2d89ef;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        tr:hover {
+            background: #eef5ff;
+        }
+
+        .severity-5 { color: red; font-weight: bold; }
+        .severity-4 { color: darkorange; font-weight: bold; }
+        .severity-3 { color: orange; }
+        .severity-2 { color: green; }
+        .severity-1 { color: gray; }
+
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h2>ASFIS Failure Intelligence System</h2>
+
+    <!-- Log -->
+    <div class="card">
+        <h3>Log Failure</h3>
+        <form action="/log" method="post">
+            <input name="component" placeholder="Component" required>
+            <input name="severity" type="number" min="1" max="5" placeholder="Severity" required>
+            <input name="error" placeholder="Error" required>
+            <button type="submit">Log</button>
+        </form>
+    </div>
+
+    <!-- Actions -->
+    <div class="card actions">
+        <h3>Actions</h3>
+
+        <a href="/simulate">
+            <button>Simulate Failure</button>
+        </a>
+
+        <form action="/monitor" method="post">
+            <input name="url" placeholder="Enter URL" required>
+            <button type="submit">Monitor</button>
+        </form>
+
+        <form action="/propagate" method="post">
+            <input name="component" placeholder="Component (e.g., Database)" required>
+            <button type="submit">Propagate</button>
+        </form>
+
+        <form action="/patterns" method="post">
+            <button type="submit">Analyze Patterns</button>
+        </form>
+
+                {% if fix %}
+        <div class="card result">
+            <h3>Fix Simulation</h3>
+            <p><b>Component:</b> {{ fix.component }}</p>
+            <p><b>Suggested Fix:</b> {{ fix.suggested_fix }}</p>
+            <p><b>Success Probability:</b> {{ fix.success_probability }}</p>
+            <p><b>Outcome:</b> {{ fix.expected_outcome }}</p>
+        </div>
+        {% endif %}
+
+        <form action="/fix" method="post">
+            <input name="component" placeholder="Component for Fix" required>
+            <button type="submit">Simulate Fix</button>
+        </form>
+
+        <form action="/reliability" method="post">
+            <button type="submit">Check Reliability</button>
+        </form>
+    </div>
+
+    <!-- Result -->
+    {% if result %}
+    <div class="card result">
+        <h3>Propagation Result</h3>
+        <p><b>Source:</b> {{ result.source }}</p>
+        <p><b>Affected:</b> {{ result.affected_components }}</p>
+        <p><b>Impact:</b> {{ result.impact_level }}</p>
+    </div>
+        {% if patterns %}
+    <div class="card result">
+        <h3>Pattern Analysis</h3>
+        <p><b>Most Failed Component:</b> {{ patterns.most_failed_component }}</p>
+        <p><b>Most Common Error:</b> {{ patterns.most_common_error }}</p>
+        <p><b>High Severity Failures:</b> {{ patterns.high_severity_count }}</p>
+    </div>
+    {% endif %}
+    {% endif %}
+    {% if reliability %}
+<div class="card result">
+    <h3>Reliability Analysis</h3>
+
+    {% for comp, score in reliability.reliability_scores.items() %}
+        <p><b>{{ comp }}</b>: {{ score }}%</p>
+    {% endfor %}
+
+    <p><b>Weakest Component:</b> {{ reliability.weakest_component }}</p>
+</div>
+{% endif %}
+
+{% if monitor %}
+<div class="card result">
+    <h3>Website Monitoring</h3>
+    <p>{{ monitor.message }}</p>
+</div>
+{% endif %}
+
+    <!-- Logs Table -->
+    <div class="card">
+        <h3>Logs</h3>
+
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>Component</th>
+                <th>Severity</th>
+                <th>Error</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Time</th>
+            </tr>
+
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.id }}</td>
+                <td>{{ log.component }}</td>
+                <td class="severity-{{ log.severity }}">{{ log.severity }}</td>
+                <td>{{ log.error }}</td>
+                <td>{{ log.status }}</td>
+                <td>{{ log.source }}</td>
+                <td>{{ log.timestamp }}</td>
+            </tr>
+            {% endfor %}
+
+        </table>
+    </div>
+
+</div>
+
+</body>
+</html>
