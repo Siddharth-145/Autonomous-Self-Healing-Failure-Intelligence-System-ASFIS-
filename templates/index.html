@@ -1,236 +1,557 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>ASFIS Dashboard</title>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASFIS — Autonomous Self-Healing Failure Intelligence System</title>
     <style>
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: linear-gradient(to right, #eef2f3, #dfe9f3);
-            margin: 0;
-            padding: 20px;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #f0f4f8; --surface: #ffffff; --border: #e2e8f0;
+            --text: #1a202c; --muted: #718096;
+            --primary: #3b82f6; --primary-dark: #1d4ed8;
+            --success: #16a34a; --warning: #d97706; --danger: #dc2626;
+            --radius: 12px; --shadow: 0 2px 12px rgba(0,0,0,0.07);
         }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px; line-height: 1.6; }
+        .container { max-width: 1100px; margin: auto; }
+        header { text-align: center; margin-bottom: 32px; }
+        header h1 { font-size: 28px; font-weight: 700; color: var(--primary-dark); letter-spacing: -0.5px; }
+        header p { color: var(--muted); font-size: 14px; margin-top: 4px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+        .card h3 { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+        .form-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+        input, select { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; background: var(--surface); color: var(--text); transition: border-color 0.2s; flex: 1; min-width: 120px; }
+        input:focus, select:focus { border-color: var(--primary); }
+        button, .btn { padding: 9px 16px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.2s; white-space: nowrap; text-decoration: none; display: inline-block; }
+        button:hover, .btn:hover { background: var(--primary-dark); }
+        .btn-success { background: var(--success); } .btn-success:hover { background: #15803d; }
+        .btn-sm { padding: 5px 10px; font-size: 12px; }
 
-        h2 {
-            text-align: center;
-            color: #2c3e50;
-            margin-bottom: 30px;
+        /* AI fix popup card */
+        .ai-fix-card {
+            background: var(--surface);
+            border: 1.5px solid var(--primary);
+            border-radius: var(--radius);
+            margin-top: 12px;
+            overflow: hidden;
+            animation: slideDown 0.25s ease;
         }
-
-        .container {
-            max-width: 1000px;
-            margin: auto;
-        }
-
-        .card {
-            background: white;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-        }
-
-        h3 {
-            margin-bottom: 15px;
-            color: #34495e;
-        }
-
-        input {
-            padding: 10px;
-            margin: 5px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            width: 200px;
-            outline: none;
-        }
-
-        input:focus {
-            border-color: #3498db;
-        }
-
-        button {
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .ai-fix-header {
+            background: var(--primary);
+            color: #fff;
             padding: 10px 16px;
-            background: #2d89ef;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
         }
-
-        button:hover {
-            background: #1b5fbf;
+        .ai-badge {
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
-
-        .actions form,
-        .actions a {
-            margin-top: 10px;
-            display: inline-block;
+        .ai-fix-body { padding: 16px; }
+        .ai-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: flex-start; font-size: 13px; }
+        .ai-label { font-weight: 600; min-width: 130px; color: var(--primary-dark); flex-shrink: 0; }
+        .ai-val { color: var(--text); }
+        .ai-steps { margin: 0; padding-left: 18px; font-size: 13px; }
+        .ai-steps li { margin-bottom: 4px; }
+        .confidence-pill {
+            display: inline-block; padding: 2px 10px; border-radius: 20px;
+            font-size: 12px; font-weight: 700;
         }
+        .conf-high   { background: #dcfce7; color: #166534; }
+        .conf-medium { background: #fef3c7; color: #92400e; }
+        .conf-low    { background: #fee2e2; color: #991b1b; }
+        .risk-Low      { color: var(--success); font-weight: 600; }
+        .risk-Medium   { color: var(--warning); font-weight: 600; }
+        .risk-High     { color: var(--danger);  font-weight: 600; }
+        .risk-Critical { color: var(--danger);  font-weight: 700; }
+        .ai-spinner { display: flex; align-items: center; gap: 10px; padding: 14px 16px; font-size: 13px; color: var(--muted); }
+        .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.7s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fallback-note { font-size: 11px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 
-        .result {
-            background: #f1f7ff;
-            border-left: 5px solid #2d89ef;
-        }
+        /* Result cards (propagation, patterns, etc.) */
+        .result-card { background: #eff6ff; border-left: 4px solid var(--primary); border-radius: 0 var(--radius) var(--radius) 0; padding: 16px 20px; margin-bottom: 20px; }
+        .result-card h3 { border: none; padding: 0; margin-bottom: 10px; color: var(--primary-dark); }
+        .result-card p { font-size: 14px; margin: 4px 0; }
+        .result-card .label { font-weight: 600; }
+        .strategy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; margin-top: 12px; }
+        .strategy-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+        .strategy-item.recommended { border-color: var(--success); background: #f0fdf4; }
+        .strategy-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-bottom: 6px; }
+        .badge-recommended { background: #dcfce7; color: var(--success); }
+        .badge-alt         { background: #eff6ff; color: var(--primary); }
+        .strategy-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .strategy-desc { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+        .confidence-bar { height: 5px; background: var(--border); border-radius: 99px; overflow: hidden; }
+        .confidence-fill { height: 100%; border-radius: 99px; background: var(--primary); }
+        .confidence-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+        .stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0; }
+        .stat { text-align: center; }
+        .stat-val { font-size: 22px; font-weight: 700; color: var(--primary-dark); }
+        .stat-lbl { font-size: 11px; color: var(--muted); }
+        .health-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+        .health-Healthy  { background: #dcfce7; color: #166534; }
+        .health-Degraded { background: #fef3c7; color: #92400e; }
+        .health-Critical { background: #fee2e2; color: #991b1b; }
+        .rel-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+        .rel-name { min-width: 100px; font-weight: 500; }
+        .rel-bar { flex: 1; height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
+        .rel-fill { height: 100%; border-radius: 99px; }
+        .rel-score { min-width: 45px; text-align: right; font-weight: 600; }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th, td {
-            padding: 10px;
-            text-align: left;
-        }
-
-        th {
-            background: #2d89ef;
-            color: white;
-        }
-
-        tr:nth-child(even) {
-            background: #f9f9f9;
-        }
-
-        tr:hover {
-            background: #eef5ff;
-        }
-
-        .severity-5 { color: red; font-weight: bold; }
-        .severity-4 { color: darkorange; font-weight: bold; }
-        .severity-3 { color: orange; }
-        .severity-2 { color: green; }
-        .severity-1 { color: gray; }
-
+        /* Logs table */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: var(--primary); color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; white-space: nowrap; }
+        th:first-child { border-radius: 8px 0 0 0; } th:last-child { border-radius: 0 8px 0 0; }
+        td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #f8faff; }
+        .severity-5 { color: var(--danger); font-weight: 700; }
+        .severity-4 { color: #ea580c; font-weight: 700; }
+        .severity-3 { color: var(--warning); }
+        .severity-2 { color: var(--success); }
+        .severity-1 { color: var(--muted); }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .status-Open       { background: #fef3c7; color: #92400e; }
+        .status-Closed     { background: #dcfce7; color: #166534; }
+        .status-Escalated  { background: #fee2e2; color: #991b1b; }
+        .status-InProgress { background: #dbeafe; color: #1e40af; }
+        .resolve-form { display: inline-flex; gap: 4px; align-items: center; }
+        .live-dot { display: inline-block; width: 8px; height: 8px; background: var(--success); border-radius: 50%; margin-right: 6px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+        .card-full { margin-bottom: 20px; }
+        .empty-state { text-align: center; color: var(--muted); padding: 32px; font-size: 14px; }
     </style>
 </head>
-
 <body>
-
 <div class="container">
 
-    <h2>ASFIS Failure Intelligence System</h2>
+    <header>
+        <h1>ASFIS</h1>
+        <p>Autonomous Self-Healing Failure Intelligence System</p>
+    </header>
 
-    <!-- Log -->
-    <div class="card">
-        <h3>Log Failure</h3>
-        <form action="/log" method="post">
-            <input name="component" placeholder="Component" required>
-            <input name="severity" type="number" min="1" max="5" placeholder="Severity" required>
-            <input name="error" placeholder="Error" required>
-            <button type="submit">Log</button>
-        </form>
+    <!-- Row 1: Log + Quick Actions -->
+    <div class="grid">
+        <div class="card">
+            <h3>Log Failure</h3>
+            <form id="log-form">
+                <div class="form-row">
+                    <input id="log-component" placeholder="Component (e.g. Database)" required>
+                    <input id="log-severity" type="number" min="1" max="5" placeholder="Severity 1-5" required style="max-width:130px">
+                    <input id="log-error" placeholder="Error description" required>
+                    <button type="submit">Log</button>
+                </div>
+            </form>
+            <div id="log-ai-result"></div>
+        </div>
+
+        <div class="card">
+            <h3>Quick Actions</h3>
+            <div class="form-row">
+                <button id="simulate-btn">Simulate Failure</button>
+                <form action="/patterns" method="post" style="display:inline">
+                    <button type="submit">Analyze Patterns</button>
+                </form>
+                <form action="/reliability" method="post" style="display:inline">
+                    <button type="submit">Reliability Score</button>
+                </form>
+            </div>
+            <div id="simulate-ai-result"></div>
+        </div>
     </div>
 
-    <!-- Actions -->
-    <div class="card actions">
-        <h3>Actions</h3>
+    <!-- Row 2: Monitor + Propagate/Fix -->
+    <div class="grid">
+        <div class="card">
+            <h3>Monitor Website</h3>
+            <form id="monitor-form">
+                <div class="form-row">
+                    <input id="monitor-url" placeholder="https://example.com" required>
+                    <button type="submit">Monitor</button>
+                </div>
+            </form>
+            <div id="monitor-result"></div>
+            <div id="monitor-ai-result"></div>
+        </div>
 
-        <a href="/simulate">
-            <button>Simulate Failure</button>
-        </a>
+        <div class="card">
+            <h3>Propagation & Fix</h3>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <form action="/propagate" method="post">
+                    <div class="form-row">
+                        <input name="component" placeholder="Component (e.g. Database)" required>
+                        <button type="submit">Propagate</button>
+                    </div>
+                </form>
+                <form action="/fix" method="post">
+                    <div class="form-row">
+                        <input name="component" placeholder="Component for fix analysis" required>
+                        <button type="submit">Simulate Fix</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
-        <form action="/monitor" method="post">
-            <input name="url" placeholder="Enter URL" required>
-            <button type="submit">Monitor</button>
-        </form>
+    <!-- Server-side result cards (propagation, patterns, fix, reliability) -->
+    {% if result %}
+    <div class="result-card">
+        <h3>Failure Propagation</h3>
+        <p><span class="label">Source:</span> {{ result.source }}</p>
+        <p><span class="label">Impact level:</span> {{ result.impact_level }}</p>
+        <p><span class="label">Critical components:</span>
+            {% if result.critical_components %}{{ result.critical_components | join(', ') }}{% else %}None{% endif %}
+        </p>
+        <p><span class="label">Impact map:</span>
+            {% for comp, score in result.impact_propagation.items() %}{{ comp }}: {{ (score * 100) | round(1) }}%{% if not loop.last %}, {% endif %}{% endfor %}
+        </p>
+    </div>
+    {% endif %}
 
-        <form action="/propagate" method="post">
-            <input name="component" placeholder="Component (e.g., Database)" required>
-            <button type="submit">Propagate</button>
-        </form>
+    {% if patterns %}
+    <div class="result-card">
+        <h3>Pattern Analysis</h3>
+        <div class="stat-row">
+            <div class="stat"><div class="stat-val">{{ patterns.total_failures }}</div><div class="stat-lbl">Total</div></div>
+            <div class="stat"><div class="stat-val">{{ patterns.open_failures }}</div><div class="stat-lbl">Open</div></div>
+            <div class="stat"><div class="stat-val">{{ patterns.closed_failures }}</div><div class="stat-lbl">Resolved</div></div>
+            <div class="stat"><div class="stat-val">{{ patterns.resolution_rate_pct }}%</div><div class="stat-lbl">Resolution rate</div></div>
+            <div class="stat"><div class="stat-val">{{ patterns.high_severity_count }}</div><div class="stat-lbl">High severity</div></div>
+        </div>
+        <p><span class="label">Most failed:</span> {{ patterns.most_failed_component }}</p>
+        <p><span class="label">Most common error:</span> {{ patterns.most_common_error }}</p>
+    </div>
+    {% endif %}
 
-        <form action="/patterns" method="post">
-            <button type="submit">Analyze Patterns</button>
-        </form>
-
-                {% if fix %}
-        <div class="card result">
-            <h3>Fix Simulation</h3>
-            <p><b>Component:</b> {{ fix.component }}</p>
-            <p><b>Suggested Fix:</b> {{ fix.suggested_fix }}</p>
-            <p><b>Success Probability:</b> {{ fix.success_probability }}</p>
-            <p><b>Outcome:</b> {{ fix.expected_outcome }}</p>
+    {% if fix %}
+    <div class="result-card">
+        <h3>Rule-based Strategy Analysis — {{ fix.component }}</h3>
+        {% if fix.message %}<p>{{ fix.message }}</p>
+        {% else %}
+        <p><span class="label">Failures:</span> {{ fix.failure_count }} total, {{ fix.open_failures }} open &nbsp;|&nbsp; <span class="label">Avg severity:</span> {{ fix.avg_severity }}</p>
+        <div class="strategy-grid">
+            {% for s in fix.all_strategies %}
+            <div class="strategy-item {% if s.key == fix.strategy_key %}recommended{% endif %}">
+                <span class="strategy-badge {% if s.key == fix.strategy_key %}badge-recommended{% else %}badge-alt{% endif %}">
+                    {% if s.key == fix.strategy_key %}Recommended{% else %}Alternative{% endif %}
+                </span>
+                <div class="strategy-name">{{ s.name }}</div>
+                <div class="strategy-desc">{{ s.description }}</div>
+                <div class="confidence-bar"><div class="confidence-fill" style="width:{{ (s.confidence*100)|round|int }}%; {% if s.key == fix.strategy_key %}background:var(--success);{% endif %}"></div></div>
+                <div class="confidence-label">Confidence: {{ (s.confidence*100)|round|int }}%</div>
+            </div>
+            {% endfor %}
         </div>
         {% endif %}
-
-        <form action="/fix" method="post">
-            <input name="component" placeholder="Component for Fix" required>
-            <button type="submit">Simulate Fix</button>
-        </form>
-
-        <form action="/reliability" method="post">
-            <button type="submit">Check Reliability</button>
-        </form>
-    </div>
-
-    <!-- Result -->
-    {% if result %}
-    <div class="card result">
-        <h3>Propagation Result</h3>
-        <p><b>Source:</b> {{ result.source }}</p>
-        <p><b>Affected:</b> {{ result.affected_components }}</p>
-        <p><b>Impact:</b> {{ result.impact_level }}</p>
-    </div>
-        {% if patterns %}
-    <div class="card result">
-        <h3>Pattern Analysis</h3>
-        <p><b>Most Failed Component:</b> {{ patterns.most_failed_component }}</p>
-        <p><b>Most Common Error:</b> {{ patterns.most_common_error }}</p>
-        <p><b>High Severity Failures:</b> {{ patterns.high_severity_count }}</p>
     </div>
     {% endif %}
-    {% endif %}
+
     {% if reliability %}
-<div class="card result">
-    <h3>Reliability Analysis</h3>
+    <div class="result-card">
+        <h3>Reliability Scores</h3>
+        {% if reliability.message %}<p>{{ reliability.message }}</p>
+        {% else %}
+        <span class="health-badge health-{{ reliability.overall_health }}">System: {{ reliability.overall_health }} ({{ reliability.system_avg_reliability }}% avg)</span>
+        <p style="font-size:13px;margin-bottom:10px;"><span class="label">Weakest:</span> {{ reliability.weakest_component }}</p>
+        {% for comp, score in reliability.reliability_scores.items() %}
+        <div class="rel-row">
+            <span class="rel-name">{{ comp }}</span>
+            <div class="rel-bar"><div class="rel-fill" style="width:{{score}}%;background:{% if score>=80 %}var(--success){% elif score>=50 %}var(--warning){% else %}var(--danger){% endif %};"></div></div>
+            <span class="rel-score">{{score}}%</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+    {% endif %}
 
-    {% for comp, score in reliability.reliability_scores.items() %}
-        <p><b>{{ comp }}</b>: {{ score }}%</p>
-    {% endfor %}
-
-    <p><b>Weakest Component:</b> {{ reliability.weakest_component }}</p>
-</div>
-{% endif %}
-
-{% if monitor %}
-<div class="card result">
-    <h3>Website Monitoring</h3>
-    <p>{{ monitor.message }}</p>
-</div>
-{% endif %}
-
-    <!-- Logs Table -->
-    <div class="card">
-        <h3>Logs</h3>
-
-        <table>
-            <tr>
-                <th>ID</th>
-                <th>Component</th>
-                <th>Severity</th>
-                <th>Error</th>
-                <th>Status</th>
-                <th>Source</th>
-                <th>Time</th>
-            </tr>
-
-            {% for log in logs %}
-            <tr>
-                <td>{{ log.id }}</td>
-                <td>{{ log.component }}</td>
-                <td class="severity-{{ log.severity }}">{{ log.severity }}</td>
-                <td>{{ log.error }}</td>
-                <td>{{ log.status }}</td>
-                <td>{{ log.source }}</td>
-                <td>{{ log.timestamp }}</td>
-            </tr>
-            {% endfor %}
-
-        </table>
+    <!-- Logs table -->
+    <div class="card card-full">
+        <h3>
+            <span class="live-dot"></span>
+            Failure Log
+            <span id="log-count" style="font-size:12px;font-weight:400;color:var(--muted);margin-left:8px;">{{ logs|length }} entr{{ "y" if logs|length==1 else "ies" }}</span>
+        </h3>
+        <div class="table-wrap">
+            <table id="log-table">
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Component</th><th>Severity</th><th>Error</th>
+                        <th>Status</th><th>Strategy used</th><th>Source</th>
+                        <th>Time</th><th>Resolved at</th><th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="log-tbody">
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.id }}</td>
+                    <td>{{ log.component }}</td>
+                    <td class="severity-{{ log.severity }}">{{ log.severity }}</td>
+                    <td>{{ log.error }}</td>
+                    <td><span class="status-badge status-{{ log.status | replace(' ','') }}">{{ log.status }}</span></td>
+                    <td>{{ log.strategy_used or '—' }}</td>
+                    <td>{{ log.source }}</td>
+                    <td>{{ log.timestamp }}</td>
+                    <td>{{ log.resolved_at or '—' }}</td>
+                    <td>
+                        {% if log.status != 'Closed' %}
+                        <form action="/resolve/{{ log.id }}" method="post" class="resolve-form">
+                            <select name="strategy" style="min-width:110px;max-width:130px;font-size:11px;padding:4px 6px;">
+                                <option value="">— strategy —</option>
+                                <option value="restart">Restart</option>
+                                <option value="failover">Failover</option>
+                                <option value="throttle">Throttle</option>
+                                <option value="rollback">Rollback</option>
+                                <option value="isolate">Isolate</option>
+                                <option value="escalate">Escalate</option>
+                            </select>
+                            <button type="submit" class="btn-sm btn-success">Close</button>
+                        </form>
+                        {% else %}
+                        <span style="font-size:12px;color:var(--success);">Resolved</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" class="empty-state">No failures logged yet. Simulate one to get started.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
 </div>
 
+<script>
+// ── AI Fix card renderer ───────────────────────────────────────────────────────
+function confClass(c) {
+    return c >= 0.75 ? 'conf-high' : c >= 0.55 ? 'conf-medium' : 'conf-low';
+}
+
+function renderAIFix(data, container) {
+    if (data.error && !data.fallback_reason) {
+        container.innerHTML = `<div style="padding:10px;font-size:13px;color:var(--danger);">${data.error}</div>`;
+        return;
+    }
+
+    const isPowered = data.ai_powered !== false;
+    const conf = data.confidence || data.success_probability || 0;
+    const confPct = Math.round(conf * 100);
+
+    // Handle both AI response shape and fallback rule-based shape
+    const strategy  = data.strategy_name || data.recommended_strategy || '—';
+    const rootCause = data.root_cause || '—';
+    const reasoning = data.reasoning || data.strategy_description || '—';
+    const steps     = data.immediate_steps || [];
+    const measures  = data.preventive_measures || [];
+    const recovery  = data.estimated_recovery_time || '—';
+    const risk      = data.risk_level || '—';
+    const escalate  = data.escalate_if || '—';
+
+    let stepsHTML = steps.map(s => `<li>${s}</li>`).join('');
+    let measuresHTML = measures.map(m => `<li>${m}</li>`).join('');
+
+    container.innerHTML = `
+        <div class="ai-fix-card">
+            <div class="ai-fix-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                ${isPowered ? 'AI-powered fix recommendation' : 'Rule-based fix recommendation'}
+                <span class="ai-badge">${isPowered ? 'Claude AI' : 'Rule-based'}</span>
+            </div>
+            <div class="ai-fix-body">
+                <div class="ai-row">
+                    <span class="ai-label">Strategy</span>
+                    <span class="ai-val"><strong>${strategy}</strong></span>
+                </div>
+                <div class="ai-row">
+                    <span class="ai-label">Confidence</span>
+                    <span class="confidence-pill ${confClass(conf)}">${confPct}%</span>
+                </div>
+                <div class="ai-row">
+                    <span class="ai-label">Risk level</span>
+                    <span class="ai-val risk-${risk}">${risk}</span>
+                </div>
+                <div class="ai-row">
+                    <span class="ai-label">Root cause</span>
+                    <span class="ai-val">${rootCause}</span>
+                </div>
+                <div class="ai-row">
+                    <span class="ai-label">Reasoning</span>
+                    <span class="ai-val">${reasoning}</span>
+                </div>
+                ${steps.length ? `
+                <div class="ai-row">
+                    <span class="ai-label">Immediate steps</span>
+                    <span class="ai-val"><ol class="ai-steps">${stepsHTML}</ol></span>
+                </div>` : ''}
+                ${measures.length ? `
+                <div class="ai-row">
+                    <span class="ai-label">Prevention</span>
+                    <span class="ai-val"><ul class="ai-steps">${measuresHTML}</ul></span>
+                </div>` : ''}
+                <div class="ai-row">
+                    <span class="ai-label">Est. recovery</span>
+                    <span class="ai-val">${recovery}</span>
+                </div>
+                <div class="ai-row">
+                    <span class="ai-label">Escalate if</span>
+                    <span class="ai-val" style="color:var(--danger);">${escalate}</span>
+                </div>
+                ${data.fallback_reason ? `<div class="fallback-note">AI unavailable (${data.fallback_reason}) — showing rule-based recommendation.</div>` : ''}
+            </div>
+        </div>`;
+}
+
+function showSpinner(container) {
+    container.innerHTML = `
+        <div class="ai-fix-card">
+            <div class="ai-spinner">
+                <div class="spinner"></div>
+                Analyzing failure with AI...
+            </div>
+        </div>`;
+}
+
+async function fetchAIFix(component, error, severity, container) {
+    showSpinner(container);
+    try {
+        const res = await fetch('/api/ai_fix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ component, error, severity }),
+        });
+        const data = await res.json();
+        renderAIFix(data, container);
+    } catch (e) {
+        container.innerHTML = `<div style="padding:10px;font-size:13px;color:var(--danger);">Could not reach AI fix endpoint.</div>`;
+    }
+}
+
+// ── Refresh log table ─────────────────────────────────────────────────────────
+function statusClass(s) {
+    return 'status-' + s.replace(' ', '');
+}
+
+async function refreshLogs() {
+    try {
+        const res = await fetch('/api/get_logs');
+        const logs = await res.json();
+        document.getElementById('log-count').textContent = logs.length + ' entr' + (logs.length === 1 ? 'y' : 'ies');
+        const tbody = document.getElementById('log-tbody');
+        if (!logs.length) {
+            tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No failures logged yet.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = logs.map(log => `
+            <tr>
+                <td>${log.id}</td>
+                <td>${log.component}</td>
+                <td class="severity-${log.severity}">${log.severity}</td>
+                <td>${log.error}</td>
+                <td><span class="status-badge ${statusClass(log.status)}">${log.status}</span></td>
+                <td>${log.strategy_used || '—'}</td>
+                <td>${log.source}</td>
+                <td>${log.timestamp}</td>
+                <td>${log.resolved_at || '—'}</td>
+                <td>${log.status !== 'Closed' ? `
+                    <form action="/resolve/${log.id}" method="post" class="resolve-form">
+                        <select name="strategy" style="min-width:110px;max-width:130px;font-size:11px;padding:4px 6px;">
+                            <option value="">— strategy —</option>
+                            <option value="restart">Restart</option>
+                            <option value="failover">Failover</option>
+                            <option value="throttle">Throttle</option>
+                            <option value="rollback">Rollback</option>
+                            <option value="isolate">Isolate</option>
+                            <option value="escalate">Escalate</option>
+                        </select>
+                        <button type="submit" class="btn-sm btn-success">Close</button>
+                    </form>` : '<span style="font-size:12px;color:var(--success);">Resolved</span>'}
+                </td>
+            </tr>`).join('');
+    } catch (e) {}
+}
+
+// ── Log form: intercept + AI fix ──────────────────────────────────────────────
+document.getElementById('log-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const component = document.getElementById('log-component').value.trim();
+    const severity  = parseInt(document.getElementById('log-severity').value) || 1;
+    const error     = document.getElementById('log-error').value.trim();
+
+    if (!component || !error) return;
+    if (severity < 1 || severity > 5) { alert('Severity must be between 1 and 5.'); return; }
+
+    // Log to server
+    await fetch('/api/log_failure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ component, severity, error }),
+    });
+
+    await refreshLogs();
+
+    // Show AI fix inline
+    await fetchAIFix(component, error, severity, document.getElementById('log-ai-result'));
+});
+
+// ── Simulate button: show AI fix inline ───────────────────────────────────────
+document.getElementById('simulate-btn').addEventListener('click', async () => {
+    const res  = await fetch('/api/simulate', { method: 'POST' });
+    const data = await res.json();
+
+    await refreshLogs();
+
+    if (data.log) {
+        await fetchAIFix(data.log.component, data.log.error, data.log.severity, document.getElementById('simulate-ai-result'));
+    }
+});
+
+// ── Monitor form: show result + AI fix inline ─────────────────────────────────
+document.getElementById('monitor-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = document.getElementById('monitor-url').value.trim();
+    if (!url) return;
+
+    const monitorResult = document.getElementById('monitor-result');
+    const aiResult      = document.getElementById('monitor-ai-result');
+
+    monitorResult.innerHTML = `<div class="ai-spinner"><div class="spinner"></div> Checking website...</div>`;
+    aiResult.innerHTML = '';
+
+    const res  = await fetch('/api/monitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+
+    await refreshLogs();
+
+    // Show monitor outcome
+    if (data.status === 'Healthy') {
+        monitorResult.innerHTML = `<div style="padding:10px;font-size:13px;color:var(--success);font-weight:600;">${data.message}${data.response_time_ms ? ' (' + data.response_time_ms + 'ms)' : ''}</div>`;
+    } else if (data.log) {
+        monitorResult.innerHTML = `<div style="padding:10px;font-size:13px;color:var(--danger);font-weight:600;">Issue detected: ${data.log.error}</div>`;
+        await fetchAIFix(data.log.component, data.log.error, data.log.severity, aiResult);
+    } else if (data.error) {
+        monitorResult.innerHTML = `<div style="padding:10px;font-size:13px;color:var(--danger);">${data.error}</div>`;
+    }
+});
+
+// ── Auto-refresh logs every 30s ───────────────────────────────────────────────
+setInterval(refreshLogs, 30000);
+</script>
 </body>
 </html>
