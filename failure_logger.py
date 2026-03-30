@@ -340,6 +340,127 @@ Respond only with the JSON object."""
             logger.error("AI parse error: %s", e)
             return {"error": "Could not parse AI response.", "fallback": True}
 
+    # ── Smart fix (keyword + component + history aware) ────────────
+
+    def smart_fix(self, component: str, error: str, severity: int):
+        """
+        Intelligent rule-based fix that combines:
+        - Error keyword analysis
+        - Component type awareness
+        - Historical failure data
+        Returns only: strategy, strategy_name, confidence, root_cause, reasoning
+        """
+        error_lower  = error.lower()
+        comp_lower   = component.lower()
+        all_logs     = self.get_logs()
+        related      = [l for l in all_logs if l["component"] == component]
+        failure_count = len(related)
+        open_failures = sum(1 for l in related if l["status"] != "Closed")
+        has_downstream = bool(DEPENDENCY_MAP.get(component))
+
+        # ── Keyword → strategy + root cause mapping ──
+        rules = [
+            (["timeout", "timed out", "connection refused", "unreachable"],
+             "restart", "Network or connection layer is not responding.",
+             "Connection-level failures are typically transient. A service restart clears stale connections and resets the connection pool."),
+
+            (["memory leak", "out of memory", "oom", "heap"],
+             "restart", "Process memory has grown unchecked, exhausting available RAM.",
+             "Memory leaks require a process restart to reclaim memory. Long-term fix needs profiling to find the leaking code path."),
+
+            (["latency", "slow", "high response", "overload", "queue full", "backpressure"],
+             "throttle", "Incoming request volume is exceeding the component's processing capacity.",
+             "Load throttling reduces pressure immediately. Pair with autoscaling to address the root capacity gap."),
+
+            (["rate limit", "429", "too many requests"],
+             "throttle", "Request rate is exceeding the allowed threshold set by the service.",
+             "Apply rate limiting on the client side and introduce exponential backoff to respect the upstream quota."),
+
+            (["disk", "i/o", "storage", "no space", "write failed"],
+             "escalate", "Disk or storage layer is full or failing, requiring manual intervention.",
+             "Disk issues cannot be auto-resolved safely. An engineer must free space, expand storage, or replace the failing disk."),
+
+            (["auth", "unauthorized", "403", "401", "permission denied", "credentials"],
+             "rollback", "Authentication or authorization configuration has broken, likely after a recent change.",
+             "Auth failures after deployment suggest a config regression. Rolling back restores the last known working credentials or policy."),
+
+            (["ssl", "certificate", "tls", "expired"],
+             "escalate", "SSL/TLS certificate has expired or is misconfigured.",
+             "Certificate renewal requires manual action. Automated renewal (e.g. Let's Encrypt) should be configured to prevent recurrence."),
+
+            (["deadlock", "lock wait", "transaction", "rollback"],
+             "restart", "Database is stuck in a deadlock state between concurrent transactions.",
+             "Restarting the database service clears active locks. Long-term fix requires query optimization to reduce lock contention."),
+
+            (["null pointer", "null reference", "segfault", "exception", "crash"],
+             "rollback", "Application-level crash caused by a code defect, likely introduced in a recent deployment.",
+             "Code-level exceptions after deployment point to a regression. Rolling back to the previous version restores stability while the bug is fixed."),
+
+            (["unavailable", "down", "offline", "not responding"],
+             "failover" if has_downstream else "restart",
+             "The component is completely unresponsive.",
+             "Full unavailability with downstream dependencies warrants failover to a backup instance to maintain service continuity." if has_downstream else "Service is down with no downstream risk. Restarting is the fastest recovery path."),
+
+            (["server error", "500", "502", "503", "504"],
+             "restart", "The server is returning error codes, indicating internal processing failure.",
+             "5xx errors from a server typically indicate a crashed process or misconfigured upstream. Restarting clears the bad state."),
+        ]
+
+        strategy_key = None
+        root_cause   = None
+        reasoning    = None
+
+        for keywords, strat, cause, reason in rules:
+            if any(kw in error_lower for kw in keywords):
+                strategy_key = strat
+                root_cause   = cause
+                reasoning    = reason
+                break
+
+        # ── Component-type override ──
+        if not strategy_key:
+            if "database" in comp_lower or "db" in comp_lower:
+                strategy_key = "restart"
+                root_cause   = "Database process encountered an unrecognised error state."
+                reasoning    = "Database restarts are generally safe and fast, clearing bad connection states and in-memory corruption."
+            elif "payment" in comp_lower:
+                strategy_key = "escalate"
+                root_cause   = "Payment component failure requires human review to avoid financial data risk."
+                reasoning    = "Payment failures must be escalated — automated recovery risks double-charges or transaction loss."
+            elif "auth" in comp_lower:
+                strategy_key = "rollback"
+                root_cause   = "Auth service failure could indicate a config or credential change gone wrong."
+                reasoning    = "Rollback restores the last known working auth config quickly and safely."
+            elif has_downstream and open_failures > 2:
+                strategy_key = "isolate"
+                root_cause   = "Repeated failures in a component with dependents risk cascading impact."
+                reasoning    = "Circuit breaker isolation stops the failure from propagating downstream while the root cause is investigated."
+            else:
+                strategy_key = "escalate" if severity >= 4 else "restart"
+                root_cause   = "Unrecognised error pattern requiring investigation."
+                reasoning    = "No matching error pattern found. Escalating to a human for high-severity issues, restarting for lower severity."
+
+        # ── Confidence calculation ──
+        base_conf = HEALING_STRATEGIES[strategy_key]["base_probability"]
+        if failure_count > 5:
+            base_conf -= 0.08
+        if open_failures > 2:
+            base_conf -= 0.05
+        if severity >= 4:
+            base_conf -= 0.05
+        confidence = round(max(0.35, min(0.97, base_conf)), 2)
+
+        return {
+            "strategy":      strategy_key,
+            "strategy_name": HEALING_STRATEGIES[strategy_key]["name"],
+            "confidence":    confidence,
+            "root_cause":    root_cause,
+            "reasoning":     reasoning,
+            "component":     component,
+            "error":         error,
+            "severity":      severity,
+        }
+
     def reliability_score(self):
         logs = self.get_logs()
         if not logs:

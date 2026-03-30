@@ -1,40 +1,75 @@
 import os
 import logging
 from functools import wraps
-from flask import Flask, request, jsonify, render_template, redirect, url_for
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session
 from failure_logger import FailureLogger
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me-in-production")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "asfis-secret-key-2024")
 app.config["DEBUG"]      = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 app.config["API_KEY"]    = os.getenv("ASFIS_API_KEY", "")
+
+USERS = {
+    os.getenv("ASFIS_USERNAME", "admin"): os.getenv("ASFIS_PASSWORD", "asfis123")
+}
 
 failure_logger = FailureLogger()
 
 
-# ── Auth guard ────────────────────────────────────────────────────────────────
-
-def require_api_key(f):
+def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        expected = app.config.get("API_KEY", "")
-        if expected and request.headers.get("X-API-Key", "") != expected:
-            return jsonify({"error": "Unauthorized — invalid API key."}), 401
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
 
 
-# ── UI routes ─────────────────────────────────────────────────────────────────
+def require_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get("logged_in"):
+            return f(*args, **kwargs)
+        expected = app.config.get("API_KEY", "")
+        if expected and request.headers.get("X-API-Key", "") != expected:
+            return jsonify({"error": "Unauthorized."}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("logged_in"):
+        return redirect(url_for("home"))
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        if USERS.get(username) == password:
+            session["logged_in"] = True
+            session["username"]  = username
+            return redirect(url_for("home"))
+        error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
 
 @app.route("/")
+@login_required
 def home():
-    return render_template("index.html", logs=failure_logger.get_logs())
+    return render_template("index.html", logs=failure_logger.get_logs(), username=session.get("username"))
 
 
 @app.route("/log", methods=["POST"])
+@login_required
 def log_ui():
     component = request.form.get("component", "").strip()
     error     = request.form.get("error", "").strip()
@@ -47,64 +82,63 @@ def log_ui():
 
 
 @app.route("/simulate")
+@login_required
 def simulate_ui():
     failure_logger.generate_simulated_failure()
     return redirect(url_for("home"))
 
 
 @app.route("/monitor", methods=["POST"])
+@login_required
 def monitor_ui():
-    url    = request.form.get("url", "").strip()
-    result = failure_logger.monitor_website(url)
-    return render_template("index.html", logs=failure_logger.get_logs(), monitor=result)
+    result = failure_logger.monitor_website(request.form.get("url", "").strip())
+    return render_template("index.html", logs=failure_logger.get_logs(), monitor=result, username=session.get("username"))
 
 
 @app.route("/propagate", methods=["POST"])
+@login_required
 def propagate_ui():
-    component = request.form.get("component", "").strip()
-    result    = failure_logger.propagate_failure(component)
-    return render_template("index.html", logs=failure_logger.get_logs(), result=result)
+    result = failure_logger.propagate_failure(request.form.get("component", "").strip())
+    return render_template("index.html", logs=failure_logger.get_logs(), result=result, username=session.get("username"))
 
 
 @app.route("/patterns", methods=["POST"])
+@login_required
 def patterns_ui():
-    result = failure_logger.analyze_patterns()
-    return render_template("index.html", logs=failure_logger.get_logs(), patterns=result)
+    return render_template("index.html", logs=failure_logger.get_logs(), patterns=failure_logger.analyze_patterns(), username=session.get("username"))
 
 
 @app.route("/fix", methods=["POST"])
+@login_required
 def fix_ui():
-    component = request.form.get("component", "").strip()
-    result    = failure_logger.simulate_fix(component)
-    return render_template("index.html", logs=failure_logger.get_logs(), fix=result)
+    result = failure_logger.simulate_fix(request.form.get("component", "").strip())
+    return render_template("index.html", logs=failure_logger.get_logs(), fix=result, username=session.get("username"))
 
 
 @app.route("/reliability", methods=["POST"])
+@login_required
 def reliability_ui():
-    result = failure_logger.reliability_score()
-    return render_template("index.html", logs=failure_logger.get_logs(), reliability=result)
+    return render_template("index.html", logs=failure_logger.get_logs(), reliability=failure_logger.reliability_score(), username=session.get("username"))
 
 
 @app.route("/resolve/<int:log_id>", methods=["POST"])
+@login_required
 def resolve_ui(log_id):
-    strategy = request.form.get("strategy", "")
-    note     = request.form.get("note", "Resolved via dashboard.")
-    failure_logger.resolve_failure(log_id, strategy=strategy, note=note)
+    failure_logger.resolve_failure(log_id, strategy=request.form.get("strategy",""), note=request.form.get("note","Resolved via dashboard."))
     return redirect(url_for("home"))
 
 
 @app.route("/status/<int:log_id>", methods=["POST"])
+@login_required
 def update_status_ui(log_id):
     failure_logger.update_status(log_id, request.form.get("status", "Open"))
     return redirect(url_for("home"))
 
 
-# ── API routes ────────────────────────────────────────────────────────────────
-
 @app.route("/api/log_failure", methods=["POST"])
 @require_api_key
 def api_log_failure():
-    data   = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     result = failure_logger.log_failure(data.get("component",""), data.get("severity",1), data.get("error",""))
     return jsonify(result), 400 if "error" in result else 201
 
@@ -134,7 +168,7 @@ def api_monitor():
 @app.route("/api/propagate", methods=["POST"])
 @require_api_key
 def api_propagate():
-    data      = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     component = data.get("component", "")
     if not component:
         return jsonify({"error": "Component is required."}), 400
@@ -150,7 +184,7 @@ def api_patterns():
 @app.route("/api/fix", methods=["POST"])
 @require_api_key
 def api_fix():
-    data      = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     component = data.get("component", "")
     if not component:
         return jsonify({"error": "Component is required."}), 400
@@ -173,52 +207,37 @@ def api_resolve(log_id):
 @app.route("/api/status/<int:log_id>", methods=["PATCH"])
 @require_api_key
 def api_update_status(log_id):
-    data   = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     status = data.get("status", "")
     if not status:
         return jsonify({"error": "Status is required."}), 400
     return jsonify(failure_logger.update_status(log_id, status, data.get("note","")))
 
 
-# ── AI fix endpoint (called by frontend fetch) ────────────────────────────────
-
 @app.route("/api/ai_fix", methods=["POST"])
-@require_api_key
+@login_required
 def api_ai_fix():
-    """
-    Accepts: { component, error, severity }
-    Returns: AI-generated healing recommendation JSON.
-    If AI fails, falls back to rule-based simulate_fix automatically.
-    """
-    data      = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     component = data.get("component", "").strip()
     error     = data.get("error", "").strip()
     try:
         severity = int(data.get("severity", 1))
     except (TypeError, ValueError):
         severity = 1
-
     if not component or not error:
         return jsonify({"error": "component and error are required."}), 400
-
-    result = failure_logger.ai_suggest_fix(component, error, severity)
-
-    # If AI failed, fall back to rule-based
-    if result.get("fallback") or "error" in result:
-        log.warning("AI fix failed, falling back to rule-based for component=%s", component)
-        fallback = failure_logger.simulate_fix(component)
-        fallback["ai_powered"] = False
-        fallback["fallback_reason"] = result.get("error", "AI unavailable")
-        return jsonify(fallback)
-
+    result = failure_logger.smart_fix(component, error, severity)
+    result.pop("error", None)
+    result.pop("fallback", None)
     return jsonify(result)
 
 
-# ── Error handlers ────────────────────────────────────────────────────────────
-
 @app.errorhandler(404)
 def not_found(e):
-    return jsonify({"error": "Endpoint not found."}), 404
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Endpoint not found."}), 404
+    return redirect(url_for("home"))
+
 
 @app.errorhandler(500)
 def server_error(e):
@@ -226,9 +245,7 @@ def server_error(e):
     return jsonify({"error": "Internal server error."}), 500
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    log.info("Starting ASFIS on port %d (debug=%s)", port, app.config["DEBUG"])
+    log.info("Starting ASFIS on port %d", port)
     app.run(host="0.0.0.0", port=port, debug=app.config["DEBUG"])
